@@ -1,9 +1,9 @@
 __author__ = 'jingli'
 
 class Default:
-    USERNAME = 'su'
-    PASSWORD = 'wwp'
-    SNMP_READ_COMM = 'public'
+    USERNAME = 'jane'
+    PASSWORD = 'jingli'
+    SNMP_READ_COMM = 'comstr_r01'
     SNMP_TIME_OUT = 10
     SNMP_RETRIES = 0
     CLI_USE_SSH = False
