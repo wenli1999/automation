@@ -1,7 +1,10 @@
 import logging
-import Device
-import Util
+
 import pexpect
+
+import Util
+import Argument
+import Device
 
 LOG = logging.getLogger('CLI')
 
@@ -12,30 +15,16 @@ class CliTool(object):
 
     def __init__(self, comm_dict):
         super(CliTool, self).__init__()
-        self.nodeIp = comm_dict[Device.CommKey.DEVICE_IP]
-
-        if Device.CommKey.CLI_USER in comm_dict:
-            self.username = comm_dict[Device.CommKey.CLI_USER]
-        else:
-            self.username = Device.Default.USERNAME
-
-        if Device.CommKey.CLI_PASS in comm_dict:
-            self.password = comm_dict[Device.CommKey.CLI_PASS]
-        else:
-            self.password = Device.Default.PASSWORD
-
-        if Device.CommKey.CLI_PASS in comm_dict:
-            self.shellPrompt = comm_dict[Device.CommKey.CLI_PASS]
-        else:
-            self.shellPrompt = Device.Default.PASSWORD
-
+        self.nodeIp = comm_dict[Argument.DEVICE_IP[Argument.NAME]]
+        self.username = comm_dict[Argument.CLI_USER[Argument.NAME]]
+        self.password = comm_dict[Argument.CLI_PASS[Argument.NAME]]
         self.shellPrompt = Device.Default.SHELL_PROMPT
 
         # expect session
         self.session = None
 
     def _logSession(self):
-        LOG.debug('%s%s', self.session.before, self.session.after)
+        LOG.debug('%s: %s%s', self.nodeIp, self.session.before, self.session.after)
 
     def open(self):
         self.session = pexpect.spawn('/usr/bin/telnet {}'.format(self.nodeIp))
@@ -51,13 +40,20 @@ class CliTool(object):
         self.session.expect(self.shellPrompt)
         self._logSession()
 
-    def close(self):
-        if self.session != None:
+    def close(self, force=False):
+        LOG.debug('%s: Closing session...', self.nodeIp)
+        if self.session == None:
+            return
+
+        if (not force) and self.session.isalive():
             self.session.sendline('exit')
             self.session.expect('Connection closed by foreign host.')
             self._logSession()
 
+        self.session.close(True)
+
     def sendCommand(self, command, prompt=None):
+        LOG.debug('%s: Sending command: %s', self.nodeIp, command)
         self.session.sendline(command)
         if prompt == None:
             prompt = self.shellPrompt
@@ -65,13 +61,31 @@ class CliTool(object):
         self._logSession()
         return self.session.before
 
+    def sendCommands(self, *commands):
+        for command in commands:
+            self.sendCommand(command)
+
+    def sendCommandNoWait(self, command):
+        LOG.debug('%s: Sending command without wait: %s', self.nodeIp, command)
+        self.session.sendline(command)
+
 
 def main():
-    cliTool = CliTool(Util.parseArgument('CLI unit test'))
+    arg_dict = Argument.parseArgument('CLI unit test')
+    cliTool = CliTool(arg_dict)
 
     cliTool.open()
-    result = cliTool.sendCommand("vlan show")
-    LOG.debug('Result: %s', result)
+    cliTool.sendCommand("vlan show")
+    cliTool.close()
+
+    cliTool.open()
+    cliTool.sendCommand("port show")
+    cliTool.close()
+
+    cliTool.open()
+    device = Device.Device(arg_dict)
+    device.rebootAndReLogin(cliTool, 'reboot now')
+    cliTool.sendCommand('int show')
     cliTool.close()
 
 

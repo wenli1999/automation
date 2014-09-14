@@ -1,9 +1,8 @@
 from subprocess import PIPE, Popen
-import time
 import logging
-import Device
-import Util
 
+import Util
+import Argument
 
 
 LOG = logging.getLogger('SNMP')
@@ -15,22 +14,10 @@ class SnmpTool(object):
 
     def __init__(self, comm_dict):
         super(SnmpTool, self).__init__()
-        self.deviceIp = comm_dict[Device.CommKey.DEVICE_IP]
-
-        if Device.CommKey.SNMP_READ_COMM in comm_dict:
-            self.readComm = comm_dict[Device.CommKey.SNMP_READ_COMM]
-        else:
-            self.readComm = Device.Default.SNMP_READ_COMM
-
-        if Device.CommKey.SNMP_TIME_OUT in comm_dict:
-            self.timeout = comm_dict[Device.CommKey.SNMP_TIME_OUT]
-        else:
-            self.timeout = Device.Default.SNMP_TIME_OUT
-
-        if Device.CommKey.SNMP_RETRIES in comm_dict:
-            self.retries = comm_dict[Device.CommKey.SNMP_RETRIES]
-        else:
-            self.timeout = Device.Default.SNMP_TIME_OUT
+        self.deviceIp = comm_dict[Argument.DEVICE_IP[Argument.NAME]]
+        self.readComm = comm_dict[Argument.SNMP_READ_COMM[Argument.NAME]]
+        self.timeout = comm_dict[Argument.SNMP_TIME_OUT[Argument.NAME]]
+        self.retries = comm_dict[Argument.SNMP_RETRIES[Argument.NAME]]
 
     def _parseSnmpResult(self, output, error):
         '''
@@ -40,10 +27,14 @@ class SnmpTool(object):
         :return: A dictionary
         '''
 
-        if output != None or len(output) == 0:
-            LOG.debug('%s', output)
-        if error != None or len(output) == 0:
-            LOG.debug('%s', error)
+        if output != None:
+            output = output.strip()
+            if len(output) > 0:
+                LOG.debug('%s', output)
+        if error != None:
+            error = error.strip()
+            if len(error) > 0:
+                LOG.debug('%s', error)
 
         # Process timeout case first
         # Timeout: No Response from
@@ -75,29 +66,18 @@ class SnmpTool(object):
 
         return self._parseSnmpResult(output, error)
 
-    def snmpGet(self, oidList):
+    def snmpGet(self, *oids):
+        return self.snmpGetList(oids)
+
+    def snmpGetList(self, oid_list):
         cmd = '/usr/bin/snmpget -v 2c -Oqn -t {} -r {} -c {} {} {}'. \
-            format(self.timeout, self.retries, self.readComm, self.deviceIp, ' '.join(oidList))
+            format(self.timeout, self.retries, self.readComm, self.deviceIp, ' '.join(oid_list))
         LOG.debug('%s', cmd)
 
         p = Popen(cmd, shell=True, stdout=PIPE, stderr=PIPE)
         output, error = p.communicate()
 
         return self._parseSnmpResult(output, error)
-
-    def snmpCheckAlive(self):
-        try:
-            self.snmpGet(['1.3.6.1.2.1.1.1.0'])
-            return True
-        except SnmpTimeoutError:
-            return False
-
-    def snmpWaitForAlive(self, interval=2):
-        alive = self.snmpCheckAlive()
-        while not alive:
-            time.sleep(interval)
-            alive = self.snmpCheckAlive()
-
 
 class SnmpTimeoutError(Exception):
     '''
@@ -114,21 +94,26 @@ class SnmpGeneralError(Exception):
 
 
 def main():
-    snmpTool = SnmpTool(Util.parseArgument('SNMP unit test'))
-
-    # Check alive blocking
-    snmpTool.snmpWaitForAlive()
+    snmpTool = SnmpTool(Argument.parseArgument('SNMP unit test'))
 
     # getBulk
-    result = snmpTool.snmpBulkWalk(oid='1.3.6.1.4.1.6141.2.60.2.1.1.1.1.2')
+    result = snmpTool.snmpBulkWalk('1.3.6.1.4.1.6141.2.60.2.1.1.1.1.2')
     for key, value in result.items():
         LOG.debug('%s = %s', key, value)
 
     # get
-    result = snmpTool.snmpGet(oidList=['1.3.6.1.2.1.1.1.0', '1.3.6.1.2.1.1.5.0', '1.3.6.1.4.1.6141.2.60.12.1.11.1.0',
-                                       '1.3.6.1.4.1.6141.2.60.2.1.1.1.1.2.1'])
+    result = snmpTool.snmpGet('1.3.6.1.2.1.1.1.0', '1.3.6.1.2.1.1.5.0', '1.3.6.1.4.1.6141.2.60.12.1.11.1.0',
+                              '1.3.6.1.4.1.6141.2.60.2.1.1.1.1.2.1')
     for key, value in result.items():
         LOG.debug('%s = %s', key, value)
+
+    # Get list
+    oid_list = ['1.3.6.1.2.1.1.1.0', '1.3.6.1.2.1.1.5.0', '1.3.6.1.4.1.6141.2.60.12.1.11.1.0',
+                '1.3.6.1.4.1.6141.2.60.2.1.1.1.1.2.1']
+    result = snmpTool.snmpGetList(oid_list)
+    for key, value in result.items():
+        LOG.debug('%s = %s', key, value)
+
 
 if __name__ == '__main__':
     Util.initLogging()
